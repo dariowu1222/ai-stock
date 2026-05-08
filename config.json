@@ -1,11 +1,16 @@
 {
-  "data_dir": "sample_data",
+  "data_dir": "price_data",
   "output_dir": "output",
   "stock_pool_file": "watchlist.json",
   "default_holding_days": 5,
   "trade_cost_rate": 0.004425,
   "top_n": 10,
   "market_mode": "local",
+  "price_source": "finmind",
+  "price_history_start_date": "2020-01-01",
+  "price_update_backfill_days": 5,
+  "finmind_request_sleep_seconds": 0.8,
+  "auto_update_prices_on_launch": true,
   "enable_ai": false,
   "enable_live_trading": false
 }

@@ -47,10 +47,50 @@ def ensure_output_dirs(output_dir: str) -> Path:
     return base
 
 
+def load_price_update_status(output_dir: str) -> dict | None:
+    path = Path(output_dir) / "price_update_status.json"
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
 def format_percent(value: float | int | None) -> str:
     if value is None:
         return "N/A"
     return f"{float(value) * 100:.2f}%"
+
+
+def build_price_data_status(stock_pool: list[dict], price_data: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    rows = []
+    for stock in stock_pool:
+        stock_id = str(stock.get("stock_id", "")).strip()
+        df = price_data.get(stock_id)
+        if df is None or df.empty:
+            rows.append(
+                {
+                    "stock_id": stock_id,
+                    "stock_name": stock.get("stock_name", ""),
+                    "rows": 0,
+                    "start_date": "",
+                    "latest_date": "",
+                }
+            )
+            continue
+
+        dates = pd.to_datetime(df["date"], errors="coerce")
+        rows.append(
+            {
+                "stock_id": stock_id,
+                "stock_name": stock.get("stock_name", ""),
+                "rows": len(df),
+                "start_date": dates.min().strftime("%Y-%m-%d"),
+                "latest_date": dates.max().strftime("%Y-%m-%d"),
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def render_market_context(market_context: dict) -> None:
@@ -136,11 +176,12 @@ def run_candidate_backtests(
 def main() -> None:
     st.set_page_config(page_title="AI 台股策略顧問 MVP", layout="wide")
     st.title("AI 台股策略顧問系統 MVP")
-    st.caption("第一階段：本地 CSV、策略篩選、固定持有天數回測、Markdown 報告。不提供真實下單。")
+    st.caption("第一階段：FinMind 日 K 更新、本地 CSV 快取、策略篩選、固定持有天數回測、Markdown 報告。不提供真實下單。")
 
     try:
         config = load_config()
         output_dir = ensure_output_dirs(config["output_dir"])
+        update_status = load_price_update_status(config["output_dir"])
         stock_pool = load_stock_pool(config["stock_pool_file"])
         price_data = load_all_prices(config["data_dir"], stock_pool)
     except Exception as exc:
@@ -161,13 +202,30 @@ def main() -> None:
 
     st.divider()
     st.subheader("資料載入狀態")
-    col1, col2, col3 = st.columns(3)
+    data_status = build_price_data_status(stock_pool, price_data)
+    latest_dates = [value for value in data_status.get("latest_date", []) if value]
+    latest_date = max(latest_dates) if latest_dates else "N/A"
+    col1, col2, col3, col4 = st.columns(4)
     col1.metric("股票池", len(stock_pool))
     col2.metric("已載入 CSV", len(price_data))
-    col3.metric("Live Trading", "Disabled")
+    col3.metric("最新資料日", latest_date)
+    col4.metric("Live Trading", "Disabled")
+    if update_status:
+        status_text = update_status.get("status", "unknown")
+        finished_at = update_status.get("finished_at") or update_status.get("started_at") or "N/A"
+        success_count = update_status.get("success_count", 0)
+        fail_count = update_status.get("fail_count", 0)
+        st.success(
+            f"最後更新時間：{finished_at}；來源：{update_status.get('source', 'N/A')}；"
+            f"狀態：{status_text}；成功 {success_count} 檔、失敗 {fail_count} 檔。"
+        )
+    else:
+        st.warning("尚未找到股價更新紀錄；請重新啟動系統讓 FinMind 更新流程執行。")
+    with st.expander("每檔資料狀態", expanded=False):
+        st.dataframe(data_status, width="stretch")
 
     if not price_data:
-        st.warning("沒有可用 CSV，請確認 sample_data 內有股票資料。")
+        st.warning("沒有可用 CSV，請確認啟動時的 FinMind 更新是否成功，或檢查 data_dir 設定。")
         return
 
     ranked = rank_screening_result(

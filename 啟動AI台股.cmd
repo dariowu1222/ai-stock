@@ -14,14 +14,7 @@ echo Starting AI Taiwan Stock Strategy Advisor...
 echo Project path: %CD%
 echo.
 
-powershell -NoProfile -Command "try { $r = Invoke-WebRequest -UseBasicParsing -Uri 'http://localhost:8501' -TimeoutSec 2; if ($r.StatusCode -ge 200) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>nul
-if not errorlevel 1 (
-    echo App is already running. Opening browser...
-    start "" "http://localhost:8501"
-    exit /b 0
-)
-
-"%PYTHON_EXE%" -c "import streamlit, pandas, numpy" >nul 2>nul
+"%PYTHON_EXE%" -c "import streamlit, pandas, numpy, requests" >nul 2>nul
 if errorlevel 1 (
     echo Required packages are missing. Installing from requirements.txt...
     "%PYTHON_EXE%" -m pip install -r requirements.txt
@@ -31,6 +24,27 @@ if errorlevel 1 (
         pause
         exit /b 1
     )
+)
+
+"%PYTHON_EXE%" -c "import json; c=json.load(open('config.json', encoding='utf-8')); raise SystemExit(0 if c.get('auto_update_prices_on_launch', True) is True else 1)" >nul 2>nul
+if not errorlevel 1 (
+    echo Updating price data from FinMind before opening app...
+    "%PYTHON_EXE%" update_prices.py
+    if errorlevel 1 (
+        echo.
+        echo Price update failed. Opening app with existing local CSV anyway.
+        echo.
+    ) else (
+        echo Price update completed.
+        echo.
+    )
+)
+
+powershell -NoProfile -Command "try { $r = Invoke-WebRequest -UseBasicParsing -Uri 'http://localhost:8501' -TimeoutSec 2; if ($r.StatusCode -ge 200) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>nul
+if not errorlevel 1 (
+    echo App is already running. Opening browser...
+    start "" "http://localhost:8501"
+    exit /b 0
 )
 
 start "" powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Seconds 3; Start-Process 'http://localhost:8501'"

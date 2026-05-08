@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 import subprocess
 import time
 import urllib.request
@@ -32,6 +33,14 @@ def python_exe() -> Path:
     return Path("python.exe")
 
 
+def load_config() -> dict:
+    try:
+        return json.loads((PROJECT_DIR / "config.json").read_text(encoding="utf-8"))
+    except Exception as exc:
+        log(f"Failed to read config.json: {exc}. Using launcher defaults.")
+        return {}
+
+
 def is_app_running() -> bool:
     try:
         with urllib.request.urlopen(URL, timeout=2) as response:
@@ -42,7 +51,7 @@ def is_app_running() -> bool:
 
 def ensure_packages(python: Path) -> bool:
     check = subprocess.run(
-        [str(python), "-c", "import streamlit, pandas, numpy"],
+        [str(python), "-c", "import streamlit, pandas, numpy, requests"],
         cwd=PROJECT_DIR,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
@@ -65,6 +74,38 @@ def ensure_packages(python: Path) -> bool:
     if install.returncode != 0:
         log(f"Package installation failed with exit code {install.returncode}.")
         return False
+    return True
+
+
+def run_price_update(python: Path, config: dict) -> bool:
+    if config.get("auto_update_prices_on_launch", True) is not True:
+        log("Auto price update is disabled by config.")
+        return True
+
+    update_script = PROJECT_DIR / "update_prices.py"
+    if not update_script.exists():
+        log("update_prices.py not found. Skipping price update.")
+        return False
+
+    log("Updating prices before opening app.")
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    with LOG_PATH.open("ab") as log_file:
+        result = subprocess.run(
+            [str(python), str(update_script)],
+            cwd=PROJECT_DIR,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            creationflags=CREATE_NO_WINDOW,
+        )
+
+    if result.returncode != 0:
+        log(f"Price update failed with exit code {result.returncode}. Opening app with local CSV anyway.")
+        return False
+
+    log("Price update completed.")
     return True
 
 
@@ -102,13 +143,16 @@ def start_app(python: Path) -> None:
 
 def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    config = load_config()
+    python = python_exe()
+    if not ensure_packages(python):
+        return
+
+    run_price_update(python, config)
+
     if is_app_running():
         log("App is already running. Opening browser.")
         webbrowser.open(URL)
-        return
-
-    python = python_exe()
-    if not ensure_packages(python):
         return
 
     start_app(python)

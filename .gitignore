@@ -16,10 +16,14 @@ env/
 *.log
 *.tmp
 *.lnk
+secrets/
+*.token
 Thumbs.db
 Desktop.ini
 
 # Generated app outputs
+price_data/*.csv
 output/*.csv
 output/*.pid
+output/price_update_status.json
 output/reports/*.md
