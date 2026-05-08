@@ -1,0 +1,24 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Tool caches
+.pytest_cache/
+.mypy_cache/
+
+# Local editor and OS files
+.vscode/
+*.log
+*.tmp
+*.lnk
+Thumbs.db
+Desktop.ini
+
+# Generated app outputs
+output/*.csv
+output/reports/*.md
