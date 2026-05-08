@@ -4,9 +4,14 @@ chcp 65001 >nul
 
 cd /d "%~dp0"
 
-set "PYTHON_EXE=%LOCALAPPDATA%\Programs\Python\Python311\python.exe"
-if not exist "%PYTHON_EXE%" (
-    set "PYTHON_EXE=python"
+set "PYTHON_EXE="
+for %%V in (312 311 310) do (
+    if not defined PYTHON_EXE if exist "%LOCALAPPDATA%\Programs\Python\Python%%V\python.exe" (
+        set "PYTHON_EXE=%LOCALAPPDATA%\Programs\Python\Python%%V\python.exe"
+    )
+)
+if not defined PYTHON_EXE (
+    set "PYTHON_EXE=py -3"
 )
 
 echo Starting AI Taiwan Stock Strategy Advisor...
