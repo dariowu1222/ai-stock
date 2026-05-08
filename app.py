@@ -195,7 +195,7 @@ def main() -> None:
         if ranked.empty:
             st.info("最新一日沒有股票符合目前策略條件。可在左側切換策略或調整參數。")
         else:
-            st.dataframe(ranked, use_container_width=True)
+            st.dataframe(ranked, width="stretch")
         st.caption(f"已匯出：{screener_path}")
 
     with tab_backtest:
@@ -218,9 +218,9 @@ def main() -> None:
                         "total_return": format_percent(metrics.get("total_return", 0)),
                     }
                 )
-            st.dataframe(pd.DataFrame(metric_rows), use_container_width=True)
+            st.dataframe(pd.DataFrame(metric_rows), width="stretch")
             with st.expander("交易明細"):
-                st.dataframe(trades, use_container_width=True)
+                st.dataframe(trades, width="stretch")
         st.caption(f"已匯出：{backtest_path}")
 
     with tab_report:

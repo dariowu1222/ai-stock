@@ -21,4 +21,5 @@ Desktop.ini
 
 # Generated app outputs
 output/*.csv
+output/*.pid
 output/reports/*.md

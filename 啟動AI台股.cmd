@@ -8,6 +8,7 @@ set "PYTHON_EXE=%LOCALAPPDATA%\Programs\Python\Python311\python.exe"
 if not exist "%PYTHON_EXE%" (
     set "PYTHON_EXE=python"
 )
+set "STREAMLIT_BROWSER_GATHER_USAGE_STATS=false"
 
 echo Starting AI Taiwan Stock Strategy Advisor...
 echo Project path: %CD%
@@ -39,7 +40,7 @@ echo Keep this window open while using the app.
 echo Press Ctrl+C to stop the app.
 echo.
 
-"%PYTHON_EXE%" -m streamlit run app.py --server.port 8501
+"%PYTHON_EXE%" -m streamlit run "%CD%\app.py" --server.port 8501 --server.headless true --browser.gatherUsageStats false
 
 echo.
 echo App stopped.
