@@ -1,0 +1,11 @@
+{
+  "data_dir": "sample_data",
+  "output_dir": "output",
+  "stock_pool_file": "watchlist.json",
+  "default_holding_days": 5,
+  "trade_cost_rate": 0.004425,
+  "top_n": 10,
+  "market_mode": "local",
+  "enable_ai": false,
+  "enable_live_trading": false
+}
