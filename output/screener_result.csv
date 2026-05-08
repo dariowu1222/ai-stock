@@ -1,0 +1,3 @@
+﻿stock_id,stock_name,strategy_name,strategy_display,signal_date,close,volume,rsi14,ma5,ma20,ma60,technical_score,reason
+2330,台積電,ma_bullish,均線多頭,2025-03-12,1138,36900,100.0,1134.0,1119.0,1079.0,80.0,均線呈多頭排列，收盤在短均上方且量能高於均量。
+2317,鴻海,ma_bullish,均線多頭,2025-03-12,318,56900,100.0,314.0,299.0,259.0,80.0,均線呈多頭排列，收盤在短均上方且量能高於均量。

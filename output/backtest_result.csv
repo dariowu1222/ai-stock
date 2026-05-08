@@ -1,0 +1,3 @@
+﻿stock_id,stock_name,strategy_name,signal_date,entry_date,entry_price,exit_date,exit_price,holding_days,gross_return,net_return,is_win
+2330,台積電,ma_bullish,2025-03-02,2025-03-03,1117.0,2025-03-08,1130.0,5,0.011638316920322245,0.007213316920322245,True
+2317,鴻海,ma_bullish,2025-03-02,2025-03-03,297.0,2025-03-08,310.0,5,0.04377104377104368,0.039346043771043684,True
