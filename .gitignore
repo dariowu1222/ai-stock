@@ -23,7 +23,8 @@ Desktop.ini
 
 # Generated app outputs
 price_data/*.csv
+price_data_test/*.csv
 output/*.csv
+output/*.json
 output/*.pid
-output/price_update_status.json
 output/reports/*.md
