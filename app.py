@@ -21,6 +21,13 @@ from data.loader import (
     load_stock_pool_from_supabase,
 )
 from data.market import get_market_context
+from reports import generate_bull_bear, generate_comp_sheet, generate_tear_sheet
+from reports.base import (
+    AUDIENCE_LABELS,
+    AUDIENCE_PRO,
+    AUDIENCE_RETAIL,
+    AUDIENCE_SELF_TRADE,
+)
 from screener.ranking import rank_screening_result
 from screener.screener import screen_stocks
 from strategy.indicators import add_all_indicators
@@ -815,25 +822,123 @@ def main() -> None:
         st.caption(f"已匯出：{backtest_path}")
 
     with tab_report:
-        st.subheader("Markdown 個股報告")
+        st.subheader("個股研報")
+        st.caption(
+            "三種具名格式：個股一頁紙研報（HTML）、同業比較表（Excel）、"
+            "三情境交易計畫（HTML，可瀏覽器列印成 PDF）。"
+        )
+
         if ranked.empty:
-            st.info("沒有候選股可產生報告。")
+            st.info("沒有候選股可產生研報。請先在左側調整策略，產出 Top N 候選股。")
         else:
-            report_paths = []
-            for _, row in ranked.iterrows():
-                stock_id = str(row["stock_id"])
-                report = build_stock_report(
-                    row.to_dict(),
-                    metrics_by_stock.get(stock_id),
-                    market_context,
-                    get_chip_score(stock_id),
+            candidate_records = ranked.to_dict("records")
+            label_to_id = {
+                f"{r['stock_id']} {r['stock_name']}": str(r["stock_id"])
+                for r in candidate_records
+            }
+
+            col_a, col_b = st.columns([3, 2])
+            with col_a:
+                focus_label = st.selectbox("選擇焦點個股", list(label_to_id.keys()))
+                focus_stock_id = label_to_id[focus_label]
+            with col_b:
+                audience_label_to_key = {
+                    AUDIENCE_LABELS[AUDIENCE_SELF_TRADE]: AUDIENCE_SELF_TRADE,
+                    AUDIENCE_LABELS[AUDIENCE_RETAIL]: AUDIENCE_RETAIL,
+                    AUDIENCE_LABELS[AUDIENCE_PRO]: AUDIENCE_PRO,
+                }
+                audience_label = st.selectbox(
+                    "一頁紙研報讀者模式",
+                    list(audience_label_to_key.keys()),
                 )
-                report_path = output_dir / "reports" / f"{stock_id}_{strategy_name}.md"
-                write_markdown_report(report, str(report_path))
-                report_paths.append(str(report_path))
-            st.write("已產出報告：")
-            for report_path in report_paths:
-                st.code(report_path)
+                audience_key = audience_label_to_key[audience_label]
+
+            focus_meta = next(
+                (s for s in stock_pool if str(s.get("stock_id")) == focus_stock_id),
+                None,
+            )
+            focus_prices = price_data.get(focus_stock_id)
+
+            if focus_meta is None or focus_prices is None or focus_prices.empty:
+                st.warning("焦點個股缺少基本資料或股價資料，無法生成研報。")
+            else:
+                reports_dir = output_dir / "reports"
+                if st.button("產生三份研報", type="primary"):
+                    with st.spinner("正在生成 tear-sheet / comp-sheet / bull-bear..."):
+                        try:
+                            tear_path = generate_tear_sheet(
+                                focus_stock_id,
+                                focus_meta.get("stock_name", ""),
+                                focus_meta.get("industry_category", ""),
+                                focus_meta.get("market", ""),
+                                focus_prices,
+                                reports_dir / f"{focus_stock_id}_tear_sheet.html",
+                                audience=audience_key,
+                            )
+                        except Exception as exc:
+                            tear_path = None
+                            st.error(f"Tear Sheet 生成失敗：{exc}")
+
+                        try:
+                            comp_path = generate_comp_sheet(
+                                focus_stock_id,
+                                stock_pool,
+                                price_data,
+                                reports_dir / f"{focus_stock_id}_comp_sheet.xlsx",
+                            )
+                        except Exception as exc:
+                            comp_path = None
+                            st.error(f"Comp Sheet 生成失敗：{exc}")
+
+                        try:
+                            bull_path = generate_bull_bear(
+                                focus_stock_id,
+                                focus_meta.get("stock_name", ""),
+                                focus_meta.get("industry_category", ""),
+                                focus_meta.get("market", ""),
+                                focus_prices,
+                                reports_dir / f"{focus_stock_id}_bull_bear.html",
+                            )
+                        except Exception as exc:
+                            bull_path = None
+                            st.error(f"Bull-Bear 生成失敗：{exc}")
+
+                    st.success("研報已產出，請下載：")
+                    for label, path in [
+                        ("個股一頁紙研報（HTML）", tear_path),
+                        ("同業比較表（Excel）", comp_path),
+                        ("三情境交易計畫（HTML，可列印 PDF）", bull_path),
+                    ]:
+                        if not path:
+                            continue
+                        path_obj = Path(path)
+                        if path_obj.exists():
+                            with open(path_obj, "rb") as fh:
+                                st.download_button(
+                                    label,
+                                    fh.read(),
+                                    file_name=path_obj.name,
+                                    mime="application/octet-stream",
+                                    key=f"dl_{path_obj.name}",
+                                )
+                            st.caption(f"已存：{path_obj}")
+
+            with st.expander("舊版 Markdown 報告（保留作對照）", expanded=False):
+                if st.button("產生全部 Markdown 報告", key="legacy_md_btn"):
+                    report_paths = []
+                    for _, row in ranked.iterrows():
+                        stock_id = str(row["stock_id"])
+                        report = build_stock_report(
+                            row.to_dict(),
+                            metrics_by_stock.get(stock_id),
+                            market_context,
+                            get_chip_score(stock_id),
+                        )
+                        report_path = output_dir / "reports" / f"{stock_id}_{strategy_name}.md"
+                        write_markdown_report(report, str(report_path))
+                        report_paths.append(str(report_path))
+                    for report_path in report_paths:
+                        st.code(report_path)
 
     with tab_limits:
         st.subheader("MVP 風險控管")

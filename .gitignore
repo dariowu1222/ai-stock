@@ -28,3 +28,6 @@ output/*.csv
 output/*.json
 output/*.pid
 output/reports/*.md
+output/reports/*.html
+output/reports/*.xlsx
+output/reports/*.csv
