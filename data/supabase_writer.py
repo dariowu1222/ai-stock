@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import time
+import base64
+import json
 from datetime import date, timedelta
 from typing import Iterable
 
@@ -26,7 +28,7 @@ def get_supabase_write_key(config: dict) -> str:
         raise SupabaseWriteError(
             "Supabase write key not found. Set SUPABASE_SERVICE_ROLE_KEY in the environment."
         )
-    return key.strip()
+    return _validate_write_key(key.strip())
 
 
 def resolve_supabase_update_start_date(
@@ -151,3 +153,30 @@ def _request_with_retries(
 def _chunks(rows: list[dict], size: int) -> Iterable[list[dict]]:
     for index in range(0, len(rows), size):
         yield rows[index : index + size]
+
+
+def _validate_write_key(key: str) -> str:
+    if key.startswith("sb_publishable_"):
+        raise SupabaseWriteError(
+            "SUPABASE_SERVICE_ROLE_KEY is a publishable key. Use a Supabase secret key or legacy service_role key."
+        )
+    if key.startswith("sb_secret_"):
+        return key
+    if key.count(".") == 2:
+        role = _jwt_role(key)
+        if role and role != "service_role":
+            raise SupabaseWriteError(
+                f"SUPABASE_SERVICE_ROLE_KEY is a JWT for role '{role}', expected 'service_role'."
+            )
+    return key
+
+
+def _jwt_role(key: str) -> str:
+    try:
+        payload = key.split(".")[1]
+        padding = "=" * (-len(payload) % 4)
+        decoded = base64.urlsafe_b64decode(payload + padding)
+        data = json.loads(decoded.decode("utf-8"))
+    except Exception:
+        return ""
+    return str(data.get("role", ""))
