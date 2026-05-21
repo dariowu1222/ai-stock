@@ -92,6 +92,15 @@ CANDIDATE_LABELS = {
 }
 
 
+PRICE_DATA_STATUS_LABELS = {
+    "stock_id": "股票代號 / Stock ID",
+    "stock_name": "股票名稱 / Name",
+    "rows": "日K筆數 / Daily Rows",
+    "start_date": "起始日期 / Start Date",
+    "latest_date": "最新日期 / Latest Date",
+}
+
+
 FILTER_RESULT_LABELS = {
     "stock_id": "股票代號",
     "stock_name": "股票名稱",
@@ -277,7 +286,7 @@ def load_config(path: str = "config.json") -> dict:
     return json.loads(config_path.read_text(encoding="utf-8"))
 
 
-@st.cache_data(show_spinner="Loading Supabase market data...")
+@st.cache_data(show_spinner="Loading Supabase market data...", ttl=300)
 def load_market_data(config: dict) -> tuple[list[dict], dict[str, pd.DataFrame]]:
     if config.get("data_source") == "supabase":
         stock_pool = load_stock_pool_from_supabase(config)
@@ -1973,6 +1982,9 @@ def main() -> None:
         config = load_config()
         output_dir = ensure_output_dirs(config["output_dir"])
         update_status = load_price_update_status(config["output_dir"])
+        if config.get("data_source") == "supabase" and st.sidebar.button("重新載入 Supabase 資料"):
+            load_market_data.clear()
+            st.rerun()
         stock_pool, price_data = load_market_data(config)
     except Exception as exc:
         st.error(f"初始化失敗：{exc}")
@@ -2036,8 +2048,9 @@ def main() -> None:
         )
     else:
         st.warning("尚未找到股價更新紀錄；請重新啟動系統讓 FinMind 更新流程執行。")
-    with st.expander("每檔資料狀態", expanded=False):
-        st.dataframe(data_status, width="stretch")
+    with st.expander("每檔資料狀態 / Per-stock Data Status", expanded=False):
+        st.caption("日K筆數 / Daily Rows：目前分析區間內，每檔股票已載入的日 K 資料筆數。")
+        st.dataframe(localize_columns(data_status, PRICE_DATA_STATUS_LABELS), width="stretch")
 
     if not price_data:
         st.warning("沒有可用股價資料，請確認資料來源設定與 Supabase 連線。")
