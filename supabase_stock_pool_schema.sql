@@ -59,3 +59,27 @@ create table if not exists public.ai_tw_stock_daily_price (
 
 create index if not exists idx_ai_tw_stock_daily_price_trade_date
   on public.ai_tw_stock_daily_price (trade_date desc);
+
+create index if not exists idx_ai_tw_stock_daily_price_stock_date_desc
+  on public.ai_tw_stock_daily_price (stock_id, trade_date desc);
+
+create table if not exists public.ai_tw_stock_update_log (
+  id bigserial primary key,
+  source text not null default 'FinMind',
+  target text not null default 'supabase',
+  started_at timestamptz,
+  finished_at timestamptz,
+  start_date date,
+  end_date date,
+  stock_count integer not null default 0,
+  success_count integer not null default 0,
+  fail_count integer not null default 0,
+  fetched_rows integer not null default 0,
+  written_rows integer not null default 0,
+  status text not null default '',
+  error text not null default '',
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_ai_tw_stock_update_log_created_at
+  on public.ai_tw_stock_update_log (created_at desc);

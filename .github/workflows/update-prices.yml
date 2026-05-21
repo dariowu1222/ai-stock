@@ -1,0 +1,72 @@
+name: Update Taiwan Stock Prices
+
+on:
+  schedule:
+    # Taiwan time 19:00, Monday to Friday.
+    - cron: "0 11 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Optional number of stocks to update, useful for testing."
+        required: false
+        type: string
+      stock_id:
+        description: "Optional single stock id to update, for example 2330."
+        required: false
+        type: string
+      start_date:
+        description: "Optional override start date, YYYY-MM-DD."
+        required: false
+        type: string
+      end_date:
+        description: "Optional override end date, YYYY-MM-DD."
+        required: false
+        type: string
+
+jobs:
+  update-prices:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Build update command
+        id: command
+        shell: bash
+        run: |
+          cmd="python update_prices.py --target supabase"
+
+          if [ -n "${{ inputs.limit }}" ]; then
+            cmd="$cmd --limit ${{ inputs.limit }}"
+          fi
+
+          if [ -n "${{ inputs.stock_id }}" ]; then
+            cmd="$cmd --stock-id ${{ inputs.stock_id }}"
+          fi
+
+          if [ -n "${{ inputs.start_date }}" ]; then
+            cmd="$cmd --start-date ${{ inputs.start_date }}"
+          fi
+
+          if [ -n "${{ inputs.end_date }}" ]; then
+            cmd="$cmd --end-date ${{ inputs.end_date }}"
+          fi
+
+          echo "cmd=$cmd" >> "$GITHUB_OUTPUT"
+
+      - name: Update Supabase price data
+        run: ${{ steps.command.outputs.cmd }}
+        env:
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
