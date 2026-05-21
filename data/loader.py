@@ -78,7 +78,10 @@ def load_stock_pool_from_supabase(config: dict) -> list[dict]:
         config,
         "ai_tw_stock_pool",
         {
-            "select": "stock_id,stock_name,market,industry_category,rank",
+            "select": (
+                "stock_id,stock_name,market,industry_category,rank,strength_score,"
+                "is_tech_focus,popularity_weight,theme_tags"
+            ),
             "order": "rank.asc",
         },
     )
@@ -88,6 +91,11 @@ def load_stock_pool_from_supabase(config: dict) -> list[dict]:
             "stock_name": str(row.get("stock_name", "")).strip(),
             "market": str(row.get("market", "")).strip(),
             "industry_category": str(row.get("industry_category", "")).strip(),
+            "rank": row.get("rank"),
+            "strength_score": row.get("strength_score"),
+            "is_tech_focus": row.get("is_tech_focus"),
+            "popularity_weight": row.get("popularity_weight"),
+            "theme_tags": str(row.get("theme_tags", "") or "").strip(),
         }
         for row in rows
         if str(row.get("stock_id", "")).strip()

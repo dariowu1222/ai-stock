@@ -30,7 +30,7 @@ from reports.base import (
 )
 from screener.ranking import rank_screening_result
 from screener.screener import screen_stocks
-from strategy.indicators import add_all_indicators
+from strategy.indicators import add_all_indicators, add_high_low_breakout, add_rsi, add_volume_averages
 from strategy.signal_engine import generate_signal
 from strategy.templates import list_strategy_templates
 
@@ -90,6 +90,184 @@ CANDIDATE_LABELS = {
     "technical_score": "技術分數",
     "reason": "符合原因",
 }
+
+
+FILTER_RESULT_LABELS = {
+    "stock_id": "股票代號",
+    "stock_name": "股票名稱",
+    "market": "市場別",
+    "industry_category": "產業類別",
+    "latest_date": "最新資料日",
+    "rows_count": "K棒數",
+    "current_strategy_signal": "目前策略訊號",
+    "close": "收盤價",
+    "day_return": "日漲跌幅",
+    "volume": "成交量",
+    "volume_ratio_20": "量比20日",
+    "rsi5": "RSI5",
+    "rsi9": "RSI9",
+    "rsi14": "RSI14",
+    "rsi20": "RSI20",
+    "ma5": "MA5",
+    "ma20": "MA20",
+    "ma60": "MA60",
+    "bias20": "20日乖離率",
+    "macd_hist": "MACD柱",
+    "k": "K值",
+    "d": "D值",
+    "atr_pct": "ATR百分比",
+    "volatility_20": "20日波動率",
+    "return_20d": "20日報酬率",
+    "breakout_20": "突破20日高",
+    "bullish_ma_order": "均線多頭",
+}
+
+
+FILTER_DEFINITIONS = [
+    {"key": "rows_count", "label": "可用K棒數", "category": "資料品質", "help": "目前分析區間內，該股票可用的日K資料筆數。"},
+    {"key": "rank", "label": "股票池排名", "category": "股票池", "help": "Supabase 股票池中的排序，數字越小代表排序越前面。"},
+    {"key": "strength_score", "label": "強度分數", "category": "股票池", "help": "股票池預先計算的綜合強度分數。"},
+    {"key": "popularity_weight", "label": "熱門權重", "category": "股票池", "help": "股票池預先給定的熱門程度或關注權重。"},
+    {"key": "close", "label": "最新收盤價", "category": "價格", "help": "最新交易日的收盤價格。"},
+    {"key": "open", "label": "最新開盤價", "category": "價格", "help": "最新交易日的開盤價格。"},
+    {"key": "high", "label": "最新最高價", "category": "價格", "help": "最新交易日盤中最高價格。"},
+    {"key": "low", "label": "最新最低價", "category": "價格", "help": "最新交易日盤中最低價格。"},
+    {"key": "day_return", "label": "日漲跌幅", "category": "價格", "unit": "pct", "help": "最新收盤價相對前一交易日收盤價的漲跌百分比。"},
+    {"key": "gap_pct", "label": "開盤跳空幅度", "category": "價格", "unit": "pct", "help": "最新開盤價相對前一交易日收盤價的差距百分比。"},
+    {"key": "amplitude_pct", "label": "振幅", "category": "價格", "unit": "pct", "help": "當日最高價與最低價相對前一日收盤價的波動幅度。"},
+    {"key": "body_pct", "label": "K棒實體幅度", "category": "K線", "unit": "pct", "help": "收盤價與開盤價的差距百分比，用來衡量當日實體大小。"},
+    {"key": "upper_shadow_pct", "label": "上影線幅度", "category": "K線", "unit": "pct", "help": "最高價高於開收盤較高者的幅度，常用來觀察上檔賣壓。"},
+    {"key": "lower_shadow_pct", "label": "下影線幅度", "category": "K線", "unit": "pct", "help": "開收盤較低者高於最低價的幅度，常用來觀察低檔承接。"},
+    {"key": "volume", "label": "最新成交量", "category": "量能", "help": "最新交易日成交股數。"},
+    {"key": "avg_volume_5", "label": "5日均量", "category": "量能", "help": "最近5個交易日平均成交量。"},
+    {"key": "avg_volume_20", "label": "20日均量", "category": "量能", "help": "最近20個交易日平均成交量。"},
+    {"key": "avg_volume_60", "label": "60日均量", "category": "量能", "help": "最近60個交易日平均成交量。"},
+    {"key": "volume_ratio_5", "label": "量比5日", "category": "量能", "help": "最新成交量除以5日均量，衡量短線放量程度。"},
+    {"key": "volume_ratio_20", "label": "量比20日", "category": "量能", "help": "最新成交量除以20日均量，衡量是否明顯放量。"},
+    {"key": "volume_change_pct", "label": "成交量變化率", "category": "量能", "unit": "pct", "help": "最新成交量相對前一交易日成交量的變化百分比。"},
+    {"key": "return_1d", "label": "1日報酬率", "category": "報酬", "unit": "pct", "help": "最新收盤價相對前一交易日收盤價的報酬率。"},
+    {"key": "return_5d", "label": "5日報酬率", "category": "報酬", "unit": "pct", "help": "最新收盤價相對5個交易日前收盤價的報酬率。"},
+    {"key": "return_10d", "label": "10日報酬率", "category": "報酬", "unit": "pct", "help": "最新收盤價相對10個交易日前收盤價的報酬率。"},
+    {"key": "return_20d", "label": "20日報酬率", "category": "報酬", "unit": "pct", "help": "最新收盤價相對20個交易日前收盤價的報酬率。"},
+    {"key": "return_60d", "label": "60日報酬率", "category": "報酬", "unit": "pct", "help": "最新收盤價相對60個交易日前收盤價的報酬率。"},
+    {"key": "ma5", "label": "MA5", "category": "均線", "help": "最近5個交易日收盤價移動平均線。"},
+    {"key": "ma10", "label": "MA10", "category": "均線", "help": "最近10個交易日收盤價移動平均線。"},
+    {"key": "ma20", "label": "MA20", "category": "均線", "help": "最近20個交易日收盤價移動平均線。"},
+    {"key": "ma60", "label": "MA60", "category": "均線", "help": "最近60個交易日收盤價移動平均線。"},
+    {"key": "ma20_slope", "label": "MA20斜率", "category": "均線", "unit": "pct", "help": "MA20相對前一日的變化百分比，用來觀察中短期趨勢方向。"},
+    {"key": "bias5", "label": "5日乖離率", "category": "乖離", "unit": "pct", "help": "收盤價偏離MA5的百分比。"},
+    {"key": "bias20", "label": "20日乖離率", "category": "乖離", "unit": "pct", "help": "收盤價偏離MA20的百分比。"},
+    {"key": "bias60", "label": "60日乖離率", "category": "乖離", "unit": "pct", "help": "收盤價偏離MA60的百分比。"},
+    {"key": "rsi5", "label": "RSI5", "category": "RSI", "help": "5日RSI，反映很短線買賣力道，數值越高越偏熱。"},
+    {"key": "rsi9", "label": "RSI9", "category": "RSI", "help": "9日RSI，常用於短線動能判斷。"},
+    {"key": "rsi14", "label": "RSI14", "category": "RSI", "help": "14日RSI，常用於超買超賣判斷。"},
+    {"key": "rsi20", "label": "RSI20", "category": "RSI", "help": "20日RSI，反映較平滑的中短期動能。"},
+    {"key": "macd", "label": "MACD值", "category": "MACD", "help": "快慢EMA差值，衡量趨勢動能。"},
+    {"key": "macd_signal", "label": "MACD Signal", "category": "MACD", "help": "MACD訊號線，用於判斷動能轉折。"},
+    {"key": "macd_hist", "label": "MACD Histogram", "category": "MACD", "help": "MACD與Signal的差距，柱狀體由負轉正常視為動能改善。"},
+    {"key": "k", "label": "K值", "category": "KD", "help": "KD指標中的快速線，反映短線相對位置。"},
+    {"key": "d", "label": "D值", "category": "KD", "help": "KD指標中的慢速線，較平滑地反映短線位置。"},
+    {"key": "rsv", "label": "RSV", "category": "KD", "help": "目前收盤價在指定區間高低價中的相對位置。"},
+    {"key": "high_20", "label": "前20日高點", "category": "突破", "help": "不含最新交易日的前20日最高價。"},
+    {"key": "high_60", "label": "前60日高點", "category": "突破", "help": "不含最新交易日的前60日最高價。"},
+    {"key": "distance_from_20d_high", "label": "距離20日高點", "category": "突破", "unit": "pct", "help": "收盤價距離前20日高點的百分比。"},
+    {"key": "distance_from_60d_high", "label": "距離60日高點", "category": "突破", "unit": "pct", "help": "收盤價距離前60日高點的百分比。"},
+    {"key": "atr14", "label": "ATR14", "category": "風險", "help": "14日平均真實波幅，衡量價格波動程度。"},
+    {"key": "atr_pct", "label": "ATR百分比", "category": "風險", "unit": "pct", "help": "ATR14除以收盤價，方便比較不同股價股票的波動。"},
+    {"key": "volatility_20", "label": "20日波動率", "category": "風險", "unit": "pct", "help": "最近20日報酬率標準差，衡量短期風險。"},
+]
+
+
+BOOLEAN_FILTER_DEFINITIONS = [
+    {"key": "current_strategy_signal", "label": "符合目前策略訊號", "help": "是否在最新交易日符合左側目前選擇的策略與參數。"},
+    {"key": "is_red_k", "label": "紅K", "help": "收盤價高於或等於開盤價。"},
+    {"key": "price_above_ma5", "label": "收盤站上MA5", "help": "最新收盤價是否高於MA5。"},
+    {"key": "price_above_ma20", "label": "收盤站上MA20", "help": "最新收盤價是否高於MA20。"},
+    {"key": "price_above_ma60", "label": "收盤站上MA60", "help": "最新收盤價是否高於MA60。"},
+    {"key": "bullish_ma_order", "label": "均線多頭排列", "help": "MA5 > MA20 > MA60，代表中短期趨勢偏多。"},
+    {"key": "bearish_ma_order", "label": "均線空頭排列", "help": "MA5 < MA20 < MA60，代表中短期趨勢偏弱。"},
+    {"key": "macd_turn_positive", "label": "MACD翻正", "help": "MACD Histogram由負轉正。"},
+    {"key": "k_above_d", "label": "K值高於D值", "help": "K值高於D值，代表短線動能偏強。"},
+    {"key": "breakout_20", "label": "突破20日高", "help": "最新收盤價突破前20日最高價。"},
+    {"key": "breakout_60", "label": "突破60日高", "help": "最新收盤價突破前60日最高價。"},
+    {"key": "is_tech_focus", "label": "科技股焦點", "help": "股票池是否標記為科技主題或科技焦點股票。"},
+]
+
+
+FILTER_CATEGORY_ORDER = [
+    "資料品質",
+    "股票池",
+    "價格",
+    "K線",
+    "量能",
+    "報酬",
+    "均線",
+    "乖離",
+    "RSI",
+    "MACD",
+    "KD",
+    "突破",
+    "風險",
+]
+
+
+QUERY_STRATEGY_EXAMPLES = [
+    {
+        "name": "量價突破",
+        "source_strategy": "volume_breakout",
+        "description": "偏向找出剛突破前高、成交量放大，但 RSI 尚未過熱的股票。",
+        "boolean": {"breakout_20": True, "price_above_ma20": True},
+        "numeric": {
+            "volume_ratio_20": (1.5, None),
+            "rsi14": (None, 80),
+            "ma20_slope": (0, None),
+        },
+    },
+    {
+        "name": "回檔轉強",
+        "source_strategy": "pullback_rebound",
+        "description": "偏向找出中期趨勢仍向上，短線重新站回 MA5 且 RSI 回升的股票。",
+        "boolean": {"price_above_ma5": True, "price_above_ma20": True},
+        "numeric": {
+            "rsi14": (35, 75),
+            "volume_ratio_20": (1.05, None),
+            "ma20_slope": (0, None),
+            "bias20": (-0.08, 0.12),
+        },
+    },
+    {
+        "name": "超跌反彈",
+        "source_strategy": "oversold_rebound",
+        "description": "偏向找出 RSI 從低檔回升、MACD 動能改善，且價格重新站上短均的股票。",
+        "boolean": {"price_above_ma5": True},
+        "numeric": {
+            "rsi14": (40, 65),
+            "macd_hist": (0, None),
+            "bias20": (-0.18, 0.03),
+        },
+    },
+    {
+        "name": "均線多頭",
+        "source_strategy": "ma_bullish",
+        "description": "偏向找出 MA5 > MA20 > MA60、價格站上短均且量能不弱的趨勢股。",
+        "boolean": {"bullish_ma_order": True, "price_above_ma5": True},
+        "numeric": {
+            "volume_ratio_20": (1.0, None),
+            "rsi14": (45, 80),
+            "return_20d": (0, None),
+        },
+    },
+    {
+        "name": "MACD 翻正",
+        "source_strategy": "macd_turn_positive",
+        "description": "偏向找出 MACD Histogram 剛由負轉正，短線動能初步改善的股票。",
+        "boolean": {"macd_turn_positive": True},
+        "numeric": {
+            "rsi14": (35, 75),
+            "volume_ratio_20": (0.8, None),
+        },
+    },
+]
 
 
 def load_config(path: str = "config.json") -> dict:
@@ -650,6 +828,1111 @@ def render_stock_charts(
     st.plotly_chart(build_kd_figure(chart_data, stock_label), use_container_width=True)
 
 
+def get_strategy_display_name(strategy_name: str) -> str:
+    for template in list_strategy_templates():
+        if template["strategy_name"] == strategy_name:
+            return template["display_name"]
+    return strategy_name
+
+
+def safe_ratio(numerator: float | int | None, denominator: float | int | None) -> float | None:
+    if numerator is None or denominator is None or pd.isna(numerator) or pd.isna(denominator):
+        return None
+    denominator = float(denominator)
+    if denominator == 0:
+        return None
+    return float(numerator) / denominator
+
+
+def pct_change_from(current: float | int | None, base: float | int | None) -> float | None:
+    ratio = safe_ratio(current, base)
+    if ratio is None:
+        return None
+    return ratio - 1
+
+
+def latest_value(data: pd.DataFrame, column: str) -> float | None:
+    if column not in data.columns or data.empty:
+        return None
+    value = data[column].iloc[-1]
+    if pd.isna(value):
+        return None
+    return float(value)
+
+
+def historical_return(data: pd.DataFrame, window: int) -> float | None:
+    if len(data) <= window:
+        return None
+    return pct_change_from(data["close"].iloc[-1], data["close"].shift(window).iloc[-1])
+
+
+def build_query_universe(
+    price_data: dict[str, pd.DataFrame],
+    stock_pool: list[dict],
+    strategy_name: str,
+    params: dict,
+) -> pd.DataFrame:
+    rows = []
+    for stock in stock_pool:
+        stock_id = str(stock.get("stock_id", "")).strip()
+        df = price_data.get(stock_id)
+        if not stock_id or df is None or df.empty:
+            continue
+
+        data = add_all_indicators(df)
+        data = add_volume_averages(data, [5, 20, 60])
+        for window in [5, 9, 20]:
+            data = add_rsi(data, window)
+        data = add_high_low_breakout(data, 60)
+        data["ma20_slope"] = data["ma20"].pct_change()
+        for window in [5, 20, 60]:
+            ma_column = f"ma{window}"
+            data[f"bias{window}"] = (data["close"] - data[ma_column]) / data[ma_column]
+        data["volatility_20"] = data["daily_return"].rolling(window=20).std()
+
+        data = data.dropna(subset=["date", "open", "high", "low", "close", "volume"])
+        if data.empty:
+            continue
+
+        latest = data.iloc[-1]
+        previous = data.iloc[-2] if len(data) >= 2 else None
+        previous_close = None if previous is None else previous["close"]
+        previous_volume = None if previous is None else previous["volume"]
+        signal = generate_signal(data, strategy_name, params)
+        current_strategy_signal = bool(signal.iloc[-1]) if not signal.empty else False
+
+        close = latest["close"]
+        open_price = latest["open"]
+        high = latest["high"]
+        low = latest["low"]
+        avg_volume_5 = latest_value(data, "avg_volume_5")
+        avg_volume_20 = latest_value(data, "avg_volume_20")
+        high_20 = latest_value(data, "high_20")
+        high_60 = latest_value(data, "high_60")
+        atr14 = latest_value(data, "atr14")
+
+        row = {
+            "stock_id": stock_id,
+            "stock_name": stock.get("stock_name", ""),
+            "market": stock.get("market", ""),
+            "industry_category": stock.get("industry_category", ""),
+            "rank": stock.get("rank"),
+            "strength_score": stock.get("strength_score"),
+            "is_tech_focus": stock.get("is_tech_focus"),
+            "popularity_weight": stock.get("popularity_weight"),
+            "theme_tags": stock.get("theme_tags", ""),
+            "latest_date": pd.to_datetime(latest["date"]).strftime("%Y-%m-%d"),
+            "rows_count": len(data),
+            "current_strategy_signal": current_strategy_signal,
+            "open": open_price,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": latest["volume"],
+            "day_return": pct_change_from(close, previous_close),
+            "gap_pct": pct_change_from(open_price, previous_close),
+            "amplitude_pct": safe_ratio(high - low, previous_close),
+            "body_pct": safe_ratio(abs(close - open_price), open_price),
+            "upper_shadow_pct": safe_ratio(high - max(open_price, close), open_price),
+            "lower_shadow_pct": safe_ratio(min(open_price, close) - low, open_price),
+            "is_red_k": close >= open_price,
+            "avg_volume_5": avg_volume_5,
+            "avg_volume_20": avg_volume_20,
+            "avg_volume_60": latest_value(data, "avg_volume_60"),
+            "volume_ratio_5": safe_ratio(latest["volume"], avg_volume_5),
+            "volume_ratio_20": safe_ratio(latest["volume"], avg_volume_20),
+            "volume_change_pct": pct_change_from(latest["volume"], previous_volume),
+            "return_1d": pct_change_from(close, previous_close),
+            "return_5d": historical_return(data, 5),
+            "return_10d": historical_return(data, 10),
+            "return_20d": historical_return(data, 20),
+            "return_60d": historical_return(data, 60),
+            "ma5": latest_value(data, "ma5"),
+            "ma10": latest_value(data, "ma10"),
+            "ma20": latest_value(data, "ma20"),
+            "ma60": latest_value(data, "ma60"),
+            "ma20_slope": latest_value(data, "ma20_slope"),
+            "bias5": latest_value(data, "bias5"),
+            "bias20": latest_value(data, "bias20"),
+            "bias60": latest_value(data, "bias60"),
+            "rsi5": latest_value(data, "rsi5"),
+            "rsi9": latest_value(data, "rsi9"),
+            "rsi14": latest_value(data, "rsi14"),
+            "rsi20": latest_value(data, "rsi20"),
+            "macd": latest_value(data, "macd"),
+            "macd_signal": latest_value(data, "macd_signal"),
+            "macd_hist": latest_value(data, "macd_hist"),
+            "k": latest_value(data, "k"),
+            "d": latest_value(data, "d"),
+            "rsv": latest_value(data, "rsv"),
+            "high_20": high_20,
+            "high_60": high_60,
+            "distance_from_20d_high": pct_change_from(close, high_20),
+            "distance_from_60d_high": pct_change_from(close, high_60),
+            "atr14": atr14,
+            "atr_pct": safe_ratio(atr14, close),
+            "volatility_20": latest_value(data, "volatility_20"),
+            "macd_turn_positive": bool(
+                len(data) >= 2
+                and pd.notna(data["macd_hist"].iloc[-1])
+                and pd.notna(data["macd_hist"].iloc[-2])
+                and data["macd_hist"].iloc[-1] > 0
+                and data["macd_hist"].iloc[-2] <= 0
+            ),
+            "breakout_20": bool(pd.notna(high_20) and close > high_20),
+            "breakout_60": bool(pd.notna(high_60) and close > high_60),
+        }
+        row["price_above_ma5"] = bool(pd.notna(row["ma5"]) and close > row["ma5"])
+        row["price_above_ma20"] = bool(pd.notna(row["ma20"]) and close > row["ma20"])
+        row["price_above_ma60"] = bool(pd.notna(row["ma60"]) and close > row["ma60"])
+        row["bullish_ma_order"] = bool(
+            pd.notna(row["ma5"]) and pd.notna(row["ma20"]) and pd.notna(row["ma60"]) and row["ma5"] > row["ma20"] > row["ma60"]
+        )
+        row["bearish_ma_order"] = bool(
+            pd.notna(row["ma5"]) and pd.notna(row["ma20"]) and pd.notna(row["ma60"]) and row["ma5"] < row["ma20"] < row["ma60"]
+        )
+        row["k_above_d"] = bool(pd.notna(row["k"]) and pd.notna(row["d"]) and row["k"] > row["d"])
+        rows.append(row)
+
+    if not rows:
+        return pd.DataFrame()
+    result = pd.DataFrame(rows)
+    for definition in FILTER_DEFINITIONS:
+        key = definition["key"]
+        if key in result.columns:
+            result[key] = pd.to_numeric(result[key], errors="coerce")
+    for definition in BOOLEAN_FILTER_DEFINITIONS:
+        key = definition["key"]
+        if key in result.columns:
+            result[key] = result[key].fillna(False).astype(bool)
+    return result
+
+
+def filter_definition_map() -> dict[str, dict]:
+    return {definition["key"]: definition for definition in FILTER_DEFINITIONS}
+
+
+def boolean_definition_map() -> dict[str, dict]:
+    return {definition["key"]: definition for definition in BOOLEAN_FILTER_DEFINITIONS}
+
+
+def numeric_display_bounds(df: pd.DataFrame, definition: dict) -> tuple[float, float] | None:
+    key = definition["key"]
+    if key not in df.columns:
+        return None
+    values = pd.to_numeric(df[key], errors="coerce").dropna()
+    if values.empty:
+        return None
+    if definition.get("unit") == "pct":
+        values = values * 100
+    return float(values.min()), float(values.max())
+
+
+def numeric_raw_to_display(value: float | None, definition: dict) -> float | None:
+    if value is None:
+        return None
+    if definition.get("unit") == "pct":
+        return float(value) * 100
+    return float(value)
+
+
+def numeric_display_to_raw(value: float | None, definition: dict) -> float | None:
+    if value is None:
+        return None
+    if definition.get("unit") == "pct":
+        return float(value) / 100
+    return float(value)
+
+
+def saved_query_strategies_path() -> Path:
+    return Path("output") / "query_strategies.json"
+
+
+def load_saved_query_strategies() -> list[dict]:
+    path = saved_query_strategies_path()
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except Exception:
+        return []
+    if not isinstance(data, list):
+        return []
+    return [item for item in data if isinstance(item, dict) and item.get("name")]
+
+
+def save_query_strategy(strategy: dict) -> Path:
+    path = saved_query_strategies_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    strategies = [item for item in load_saved_query_strategies() if item.get("name") != strategy.get("name")]
+    strategies.append(strategy)
+    path.write_text(json.dumps(strategies, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
+
+
+def set_query_controls_to_full_range(query_df: pd.DataFrame) -> None:
+    st.session_state["filter_keyword"] = ""
+    st.session_state["filter_market"] = []
+    st.session_state["filter_industry"] = []
+    for definition in FILTER_DEFINITIONS:
+        bounds = numeric_display_bounds(query_df, definition)
+        if bounds is None:
+            continue
+        key = definition["key"]
+        st.session_state[f"filter_{key}_min"] = bounds[0]
+        st.session_state[f"filter_{key}_max"] = bounds[1]
+    for definition in BOOLEAN_FILTER_DEFINITIONS:
+        st.session_state[f"filter_{definition['key']}"] = "全部"
+
+
+def apply_strategy_example_to_query_controls(example: dict, query_df: pd.DataFrame) -> None:
+    set_query_controls_to_full_range(query_df)
+    st.session_state["filter_keyword"] = str(example.get("keyword", "") or "")
+    st.session_state["filter_market"] = list(example.get("markets", []) or [])
+    st.session_state["filter_industry"] = list(example.get("industries", []) or [])
+    numeric_definitions = filter_definition_map()
+    for key, limits in example.get("numeric", {}).items():
+        definition = numeric_definitions.get(key)
+        bounds = numeric_display_bounds(query_df, definition) if definition else None
+        if definition is None or bounds is None:
+            continue
+        lower, upper = limits
+        selected_min = numeric_raw_to_display(lower, definition)
+        selected_max = numeric_raw_to_display(upper, definition)
+        if selected_min is None:
+            selected_min = bounds[0]
+        if selected_max is None:
+            selected_max = bounds[1]
+        st.session_state[f"filter_{key}_min"] = max(bounds[0], min(bounds[1], selected_min))
+        st.session_state[f"filter_{key}_max"] = max(bounds[0], min(bounds[1], selected_max))
+
+    for key, expected in example.get("boolean", {}).items():
+        st.session_state[f"filter_{key}"] = "是" if expected else "否"
+
+    st.session_state["parameter_query_active_example"] = example["name"]
+    st.session_state.pop("parameter_query_result", None)
+    st.session_state.pop("parameter_query_context", None)
+
+
+def format_strategy_example_conditions(example: dict) -> str:
+    numeric_definitions = filter_definition_map()
+    boolean_definitions = boolean_definition_map()
+    parts = []
+    if example.get("keyword"):
+        parts.append(f"關鍵字={example['keyword']}")
+    if example.get("markets"):
+        parts.append("市場=" + ",".join(map(str, example["markets"])))
+    if example.get("industries"):
+        parts.append("產業=" + ",".join(map(str, example["industries"])))
+    for key, expected in example.get("boolean", {}).items():
+        label = boolean_definitions.get(key, {}).get("label", key)
+        parts.append(f"{label}={'是' if expected else '否'}")
+    for key, limits in example.get("numeric", {}).items():
+        definition = numeric_definitions.get(key, {})
+        label = definition.get("label", key)
+        unit = "%" if definition.get("unit") == "pct" else ""
+        lower, upper = limits
+        lower_display = numeric_raw_to_display(lower, definition) if definition else lower
+        upper_display = numeric_raw_to_display(upper, definition) if definition else upper
+        if lower is None:
+            parts.append(f"{label}<={upper_display:g}{unit}")
+        elif upper is None:
+            parts.append(f"{label}>={lower_display:g}{unit}")
+        else:
+            parts.append(f"{lower_display:g}{unit}<={label}<={upper_display:g}{unit}")
+    return " / ".join(parts)
+
+
+def collect_query_controls_as_strategy(name: str, description: str, query_df: pd.DataFrame) -> dict:
+    numeric = {}
+    for definition in FILTER_DEFINITIONS:
+        key = definition["key"]
+        bounds = numeric_display_bounds(query_df, definition)
+        if bounds is None:
+            continue
+        selected_min = float(st.session_state.get(f"filter_{key}_min", bounds[0]))
+        selected_max = float(st.session_state.get(f"filter_{key}_max", bounds[1]))
+        lower = None if abs(selected_min - bounds[0]) < 1e-9 else numeric_display_to_raw(selected_min, definition)
+        upper = None if abs(selected_max - bounds[1]) < 1e-9 else numeric_display_to_raw(selected_max, definition)
+        if lower is not None or upper is not None:
+            numeric[key] = (lower, upper)
+
+    boolean = {}
+    for definition in BOOLEAN_FILTER_DEFINITIONS:
+        key = definition["key"]
+        choice = st.session_state.get(f"filter_{key}", "全部")
+        if choice != "全部":
+            boolean[key] = choice == "是"
+
+    return {
+        "name": name,
+        "source_strategy": f"custom_{datetime.now().strftime('%Y%m%d%H%M%S')}",
+        "description": description or "自訂查詢策略。",
+        "custom": True,
+        "keyword": st.session_state.get("filter_keyword", ""),
+        "markets": list(st.session_state.get("filter_market", []) or []),
+        "industries": list(st.session_state.get("filter_industry", []) or []),
+        "boolean": boolean,
+        "numeric": numeric,
+    }
+
+
+def render_strategy_examples(query_df: pd.DataFrame) -> None:
+    st.markdown("**策略範例**")
+    st.caption("這裡先把原本五種策略改寫成可直接帶入本分頁的查詢參數。按下帶入後，請再按「查詢」更新結果。")
+    examples = QUERY_STRATEGY_EXAMPLES + load_saved_query_strategies()
+    columns = st.columns(min(5, max(1, len(examples))))
+    for index, example in enumerate(examples):
+        with columns[index % len(columns)]:
+            with st.container(border=True):
+                st.markdown(f"**{example['name']}**")
+                if example.get("custom"):
+                    st.caption("自訂策略")
+                st.caption(example["description"])
+                st.caption(format_strategy_example_conditions(example))
+                button_key = f"apply_example_{example.get('source_strategy', example['name'])}_{index}"
+                if st.button("帶入參數", key=button_key):
+                    apply_strategy_example_to_query_controls(example, query_df)
+                    st.rerun()
+    active_example = st.session_state.get("parameter_query_active_example")
+    if active_example:
+        st.info(f"已帶入策略範例：{active_example}。確認條件後按「查詢」更新結果。")
+
+
+def slider_step(minimum: float, maximum: float, unit: str | None) -> float:
+    span = abs(maximum - minimum)
+    if unit == "pct":
+        return 0.1 if span <= 20 else 1.0
+    if span <= 1:
+        return 0.01
+    if span <= 20:
+        return 0.1
+    if span <= 200:
+        return 1.0
+    return max(round(span / 100, 2), 1.0)
+
+
+def apply_numeric_filter(df: pd.DataFrame, mask: pd.Series, definition: dict) -> pd.Series:
+    key = definition["key"]
+    if key not in df.columns:
+        return mask
+    values = pd.to_numeric(df[key], errors="coerce")
+    available = values.dropna()
+    if available.empty:
+        return mask
+
+    unit = definition.get("unit")
+    display_values = available * 100 if unit == "pct" else available
+    minimum = float(display_values.min())
+    maximum = float(display_values.max())
+    label = definition["label"] + (" (%)" if unit == "pct" else "")
+    if minimum == maximum:
+        st.caption(f"{label}: {minimum:,.2f}")
+        return mask
+
+    step = slider_step(minimum, maximum, unit)
+    input_col1, input_col2 = st.columns(2)
+    selected_min = input_col1.number_input(
+        f"{label} 下限",
+        value=minimum,
+        step=step,
+        format="%.4f",
+        help=definition.get("help"),
+        key=f"filter_{key}_min",
+    )
+    selected_max = input_col2.number_input(
+        f"{label} 上限",
+        value=maximum,
+        step=step,
+        format="%.4f",
+        help=definition.get("help"),
+        key=f"filter_{key}_max",
+    )
+    if selected_min > selected_max:
+        selected_min, selected_max = selected_max, selected_min
+    lower = selected_min / 100 if unit == "pct" else selected_min
+    upper = selected_max / 100 if unit == "pct" else selected_max
+    return mask & values.between(lower, upper)
+
+
+def apply_boolean_filter(df: pd.DataFrame, mask: pd.Series, definition: dict) -> pd.Series:
+    key = definition["key"]
+    if key not in df.columns:
+        return mask
+    choice = st.selectbox(
+        definition["label"],
+        ["全部", "是", "否"],
+        help=definition.get("help"),
+        key=f"filter_{key}",
+    )
+    if choice == "全部":
+        return mask
+    expected = choice == "是"
+    return mask & (df[key].fillna(False).astype(bool) == expected)
+
+
+def render_parameter_query_tab_v2(
+    price_data: dict[str, pd.DataFrame],
+    stock_pool: list[dict],
+    strategy_name: str,
+    params: dict,
+    holding_days: int,
+    selected_start_date: date,
+    selected_end_date: date,
+) -> None:
+    st.subheader("全部參數查詢")
+    query_df = build_query_universe(price_data, stock_pool, strategy_name, params)
+    if query_df.empty:
+        st.info("目前分析區間內沒有可查詢的日K資料。")
+        return
+
+    strategy_display = get_strategy_display_name(strategy_name)
+    summary_col1, summary_col2, summary_col3, summary_col4 = st.columns(4)
+    summary_col1.metric("目前策略", strategy_display)
+    summary_col2.metric("回測天數", holding_days)
+    summary_col3.metric("分析區間", f"{selected_start_date.isoformat()} ~ {selected_end_date.isoformat()}")
+    summary_col4.metric("可查詢股票", len(query_df))
+    if params:
+        st.caption("目前策略參數：" + " / ".join(f"{key}={value}" for key, value in params.items()))
+    st.caption("ROE稅後、EPS、營收、法人與融資融券等不是日K可推導欄位；需要新增基本面或籌碼資料表後才能加入這裡。")
+
+    render_strategy_examples(query_df)
+    save_message = st.session_state.pop("query_strategy_save_message", None)
+    if save_message:
+        st.success(save_message)
+
+    clear_col1, clear_col2 = st.columns([1, 4])
+    if clear_col1.button("清空參數", type="secondary"):
+        set_query_controls_to_full_range(query_df)
+        st.session_state.pop("parameter_query_active_example", None)
+        st.session_state.pop("parameter_query_result", None)
+        st.session_state.pop("parameter_query_context", None)
+        st.rerun()
+    clear_col2.caption("清空後會把關鍵字、市場、產業、布林條件與所有 range 都恢復成「全部」。")
+
+    market_options = sorted(value for value in query_df.get("market", pd.Series(dtype=str)).dropna().astype(str).unique() if value)
+    industry_options = sorted(
+        value for value in query_df.get("industry_category", pd.Series(dtype=str)).dropna().astype(str).unique() if value
+    )
+    if "filter_market" in st.session_state:
+        st.session_state["filter_market"] = [value for value in st.session_state["filter_market"] if value in market_options]
+    if "filter_industry" in st.session_state:
+        st.session_state["filter_industry"] = [value for value in st.session_state["filter_industry"] if value in industry_options]
+
+    query_context = json.dumps(
+        {
+            "strategy_name": strategy_name,
+            "params": params,
+            "holding_days": holding_days,
+            "start": selected_start_date.isoformat(),
+            "end": selected_end_date.isoformat(),
+            "rows": len(query_df),
+            "latest": str(query_df["latest_date"].max()) if "latest_date" in query_df.columns else "",
+        },
+        sort_keys=True,
+        default=str,
+    )
+
+    with st.form("parameter_query_form"):
+        mask = pd.Series(True, index=query_df.index)
+        action_col1, action_col2 = st.columns([1, 4])
+        submitted = action_col1.form_submit_button("查詢", type="primary")
+        action_col2.caption("查詢鍵已放在最上方；調整條件後，按查詢才會更新下方結果。")
+        top_col1, top_col2, top_col3 = st.columns([2, 1, 1])
+        keyword = top_col1.text_input(
+            "股票代號 / 名稱 / 主題關鍵字",
+            help="可輸入股票代號、股票名稱或主題標籤的一部分來篩選。",
+            key="filter_keyword",
+        ).strip()
+        if keyword:
+            keyword_mask = (
+                query_df["stock_id"].astype(str).str.contains(keyword, case=False, na=False)
+                | query_df["stock_name"].astype(str).str.contains(keyword, case=False, na=False)
+                | query_df.get("theme_tags", pd.Series("", index=query_df.index)).astype(str).str.contains(keyword, case=False, na=False)
+            )
+            mask &= keyword_mask
+
+        selected_markets = top_col2.multiselect("市場別", market_options, help="依上市、上櫃等市場分類篩選。", key="filter_market")
+        if selected_markets:
+            mask &= query_df["market"].astype(str).isin(selected_markets)
+
+        selected_industries = top_col3.multiselect(
+            "產業類別",
+            industry_options,
+            help="依股票池中的產業分類篩選。",
+            key="filter_industry",
+        )
+        if selected_industries:
+            mask &= query_df["industry_category"].astype(str).isin(selected_industries)
+
+        st.markdown("**布林條件**")
+        bool_cols = st.columns(4)
+        for index, definition in enumerate(BOOLEAN_FILTER_DEFINITIONS):
+            with bool_cols[index % len(bool_cols)]:
+                mask = apply_boolean_filter(query_df, mask, definition)
+
+        definitions_by_category = {
+            category: [definition for definition in FILTER_DEFINITIONS if definition["category"] == category]
+            for category in FILTER_CATEGORY_ORDER
+        }
+        for category in FILTER_CATEGORY_ORDER:
+            definitions = definitions_by_category.get(category, [])
+            available_definitions = [definition for definition in definitions if definition["key"] in query_df.columns]
+            if not available_definitions:
+                continue
+            st.markdown(f"**{category}**")
+            columns = st.columns(3)
+            for index, definition in enumerate(available_definitions):
+                with columns[index % len(columns)]:
+                    mask = apply_numeric_filter(query_df, mask, definition)
+
+        with st.expander("儲存新策略", expanded=False):
+            save_strategy_name = st.text_input(
+                "策略名稱",
+                help="輸入名稱後，可把目前表單裡的條件儲存成自訂策略範例。",
+                key="save_strategy_name",
+            )
+            save_strategy_description = st.text_area(
+                "策略說明",
+                help="簡短描述這組條件想找的股票型態。",
+                key="save_strategy_description",
+            )
+
+        submit_col1, submit_col2, submit_col3 = st.columns([1, 1, 3])
+        submitted = submit_col1.form_submit_button("查詢", type="primary")
+        save_submitted = submit_col2.form_submit_button("儲存新策略")
+        submit_col3.caption("調整上方條件不會重新查詢；按下查詢後才會更新下方結果。儲存新策略會保存目前表單條件。")
+
+    if save_submitted_top or save_submitted:
+        strategy_name_to_save = save_strategy_name_top.strip() if save_submitted_top else save_strategy_name.strip()
+        strategy_description_to_save = (
+            save_strategy_description_top.strip()
+            if save_submitted_top
+            else save_strategy_description.strip()
+        )
+        if not strategy_name_to_save:
+            st.warning("請先輸入策略名稱。")
+        else:
+            saved_strategy = collect_query_controls_as_strategy(
+                strategy_name_to_save,
+                strategy_description_to_save,
+                query_df,
+            )
+            save_path = save_query_strategy(saved_strategy)
+            st.session_state["query_strategy_save_message"] = f"已儲存策略：{strategy_name_to_save}（{save_path}）"
+            st.session_state["parameter_query_active_example"] = strategy_name_to_save
+            st.rerun()
+
+    if submitted:
+        filtered = query_df.loc[mask].sort_values(["current_strategy_signal", "volume_ratio_20"], ascending=[False, False])
+        st.session_state["parameter_query_result"] = filtered
+        st.session_state["parameter_query_context"] = query_context
+    elif st.session_state.get("parameter_query_context") == query_context and "parameter_query_result" in st.session_state:
+        filtered = st.session_state["parameter_query_result"]
+    else:
+        st.info("設定查詢條件後，請按「查詢」產生結果。")
+        return
+
+    st.caption(f"符合條件：{len(filtered)} / {len(query_df)} 檔")
+    result_columns = [column for column in FILTER_RESULT_LABELS if column in filtered.columns]
+    display_df = filtered[result_columns].copy()
+    percent_columns = ["day_return", "bias20", "atr_pct", "volatility_20", "return_20d"]
+    for column in percent_columns:
+        if column in display_df.columns:
+            display_df[column] = display_df[column] * 100
+    st.dataframe(localize_columns(display_df, FILTER_RESULT_LABELS), width="stretch", height=420)
+
+    with st.expander("全部欄位資料", expanded=False):
+        full_display = filtered.copy()
+        pct_columns = [definition["key"] for definition in FILTER_DEFINITIONS if definition.get("unit") == "pct"]
+        for column in pct_columns:
+            if column in full_display.columns:
+                full_display[column] = full_display[column] * 100
+        st.dataframe(full_display, width="stretch", height=520)
+
+    csv_data = filtered.to_csv(index=False, encoding="utf-8-sig")
+    st.download_button(
+        "下載目前查詢結果 CSV",
+        csv_data,
+        file_name="parameter_query_result.csv",
+        mime="text/csv",
+    )
+
+
+def render_parameter_query_tab_v3(
+    price_data: dict[str, pd.DataFrame],
+    stock_pool: list[dict],
+    strategy_name: str,
+    params: dict,
+    holding_days: int,
+    selected_start_date: date,
+    selected_end_date: date,
+) -> None:
+    st.subheader("全部參數查詢")
+    query_df = build_query_universe(price_data, stock_pool, strategy_name, params)
+    if query_df.empty:
+        st.info("目前分析區間內沒有可查詢的日K資料。")
+        return
+
+    strategy_display = get_strategy_display_name(strategy_name)
+    summary_col1, summary_col2, summary_col3, summary_col4 = st.columns(4)
+    summary_col1.metric("目前策略", strategy_display)
+    summary_col2.metric("回測天數", holding_days)
+    summary_col3.metric("分析區間", f"{selected_start_date.isoformat()} ~ {selected_end_date.isoformat()}")
+    summary_col4.metric("可查詢股票", len(query_df))
+    if params:
+        st.caption("目前策略參數：" + " / ".join(f"{key}={value}" for key, value in params.items()))
+    st.caption("ROE稅後、EPS、營收、法人與融資融券等不是日K可推導欄位；需要新增基本面或籌碼資料表後才能加入這裡。")
+
+    render_strategy_examples(query_df)
+    save_message = st.session_state.pop("query_strategy_save_message", None)
+    if save_message:
+        st.success(save_message)
+
+    market_options = sorted(value for value in query_df.get("market", pd.Series(dtype=str)).dropna().astype(str).unique() if value)
+    industry_options = sorted(
+        value for value in query_df.get("industry_category", pd.Series(dtype=str)).dropna().astype(str).unique() if value
+    )
+    if "filter_market" in st.session_state:
+        st.session_state["filter_market"] = [value for value in st.session_state["filter_market"] if value in market_options]
+    if "filter_industry" in st.session_state:
+        st.session_state["filter_industry"] = [value for value in st.session_state["filter_industry"] if value in industry_options]
+
+    clear_col1, clear_col2 = st.columns([1, 4])
+    if clear_col1.button("清空參數", type="secondary"):
+        set_query_controls_to_full_range(query_df)
+        st.session_state.pop("parameter_query_active_example", None)
+        st.session_state.pop("parameter_query_result", None)
+        st.session_state.pop("parameter_query_context", None)
+        st.rerun()
+    clear_col2.caption("清空會把關鍵字、市場、產業、布林條件與所有 range 都恢復成「全部」。")
+
+    query_context = json.dumps(
+        {
+            "strategy_name": strategy_name,
+            "params": params,
+            "holding_days": holding_days,
+            "start": selected_start_date.isoformat(),
+            "end": selected_end_date.isoformat(),
+            "rows": len(query_df),
+            "latest": str(query_df["latest_date"].max()) if "latest_date" in query_df.columns else "",
+        },
+        sort_keys=True,
+        default=str,
+    )
+
+    with st.form("parameter_query_form"):
+        mask = pd.Series(True, index=query_df.index)
+        action_col1, action_col2 = st.columns([1, 4])
+        submitted = action_col1.form_submit_button("查詢", type="primary")
+        action_col2.caption("查詢鍵在最上方；調整條件後，按查詢才會更新下方結果。")
+
+        save_top_col1, save_top_col2, save_top_col3 = st.columns([2, 3, 1])
+        save_strategy_name_top = save_top_col1.text_input(
+            "策略名稱",
+            help="輸入名稱後，可把目前表單裡的條件儲存成自訂策略範例。",
+            key="save_strategy_name_top",
+        )
+        save_strategy_description_top = save_top_col2.text_input(
+            "策略說明",
+            help="簡短描述這組條件想找的股票型態。",
+            key="save_strategy_description_top",
+        )
+        save_submitted_top = save_top_col3.form_submit_button("儲存新策略")
+
+        top_col1, top_col2, top_col3 = st.columns([2, 1, 1])
+        keyword = top_col1.text_input(
+            "股票代號 / 名稱 / 主題關鍵字",
+            help="可輸入股票代號、股票名稱或主題標籤的一部分來篩選。",
+            key="filter_keyword",
+        ).strip()
+        if keyword:
+            keyword_mask = (
+                query_df["stock_id"].astype(str).str.contains(keyword, case=False, na=False)
+                | query_df["stock_name"].astype(str).str.contains(keyword, case=False, na=False)
+                | query_df.get("theme_tags", pd.Series("", index=query_df.index)).astype(str).str.contains(keyword, case=False, na=False)
+            )
+            mask &= keyword_mask
+
+        selected_markets = top_col2.multiselect("市場別", market_options, help="依上市、上櫃等市場分類篩選。", key="filter_market")
+        if selected_markets:
+            mask &= query_df["market"].astype(str).isin(selected_markets)
+
+        selected_industries = top_col3.multiselect(
+            "產業類別",
+            industry_options,
+            help="依股票池中的產業分類篩選。",
+            key="filter_industry",
+        )
+        if selected_industries:
+            mask &= query_df["industry_category"].astype(str).isin(selected_industries)
+
+        st.markdown("**布林條件**")
+        bool_cols = st.columns(4)
+        for index, definition in enumerate(BOOLEAN_FILTER_DEFINITIONS):
+            with bool_cols[index % len(bool_cols)]:
+                mask = apply_boolean_filter(query_df, mask, definition)
+
+        definitions_by_category = {
+            category: [definition for definition in FILTER_DEFINITIONS if definition["category"] == category]
+            for category in FILTER_CATEGORY_ORDER
+        }
+        for category in FILTER_CATEGORY_ORDER:
+            definitions = definitions_by_category.get(category, [])
+            available_definitions = [definition for definition in definitions if definition["key"] in query_df.columns]
+            if not available_definitions:
+                continue
+            st.markdown(f"**{category}**")
+            columns = st.columns(3)
+            for index, definition in enumerate(available_definitions):
+                with columns[index % len(columns)]:
+                    mask = apply_numeric_filter(query_df, mask, definition)
+
+        save_submitted = False
+
+    if save_submitted_top or save_submitted:
+        strategy_name_to_save = save_strategy_name_top.strip()
+        strategy_description_to_save = save_strategy_description_top.strip()
+        if not strategy_name_to_save:
+            st.warning("請先輸入策略名稱。")
+        else:
+            saved_strategy = collect_query_controls_as_strategy(
+                strategy_name_to_save,
+                strategy_description_to_save,
+                query_df,
+            )
+            save_path = save_query_strategy(saved_strategy)
+            st.session_state["query_strategy_save_message"] = f"已儲存策略：{strategy_name_to_save}（{save_path}）"
+            st.session_state["parameter_query_active_example"] = strategy_name_to_save
+            st.rerun()
+
+    if submitted:
+        filtered = query_df.loc[mask].sort_values(["current_strategy_signal", "volume_ratio_20"], ascending=[False, False])
+        st.session_state["parameter_query_result"] = filtered
+        st.session_state["parameter_query_context"] = query_context
+    elif st.session_state.get("parameter_query_context") == query_context and "parameter_query_result" in st.session_state:
+        filtered = st.session_state["parameter_query_result"]
+    else:
+        st.info("設定查詢條件後，請按「查詢」產生結果。")
+        return
+
+    st.caption(f"符合條件：{len(filtered)} / {len(query_df)} 檔")
+    result_columns = [column for column in FILTER_RESULT_LABELS if column in filtered.columns]
+    display_df = filtered[result_columns].copy()
+    percent_columns = ["day_return", "bias20", "atr_pct", "volatility_20", "return_20d"]
+    for column in percent_columns:
+        if column in display_df.columns:
+            display_df[column] = display_df[column] * 100
+    st.dataframe(localize_columns(display_df, FILTER_RESULT_LABELS), width="stretch", height=420)
+
+    with st.expander("全部欄位資料", expanded=False):
+        full_display = filtered.copy()
+        pct_columns = [definition["key"] for definition in FILTER_DEFINITIONS if definition.get("unit") == "pct"]
+        for column in pct_columns:
+            if column in full_display.columns:
+                full_display[column] = full_display[column] * 100
+        st.dataframe(full_display, width="stretch", height=520)
+
+    csv_data = filtered.to_csv(index=False, encoding="utf-8-sig")
+    st.download_button(
+        "下載目前查詢結果 CSV",
+        csv_data,
+        file_name="parameter_query_result.csv",
+        mime="text/csv",
+    )
+
+
+def render_parameter_query_tab_v4(
+    price_data: dict[str, pd.DataFrame],
+    stock_pool: list[dict],
+    strategy_name: str,
+    params: dict,
+    holding_days: int,
+    selected_start_date: date,
+    selected_end_date: date,
+) -> None:
+    st.subheader("全部參數查詢")
+    query_df = build_query_universe(price_data, stock_pool, strategy_name, params)
+    if query_df.empty:
+        st.info("目前分析區間內沒有可查詢的日K資料。")
+        return
+
+    strategy_display = get_strategy_display_name(strategy_name)
+    summary_col1, summary_col2, summary_col3, summary_col4 = st.columns(4)
+    summary_col1.metric("目前策略", strategy_display)
+    summary_col2.metric("回測天數", holding_days)
+    summary_col3.metric("分析區間", f"{selected_start_date.isoformat()} ~ {selected_end_date.isoformat()}")
+    summary_col4.metric("可查詢股票", len(query_df))
+    if params:
+        st.caption("目前策略參數：" + " / ".join(f"{key}={value}" for key, value in params.items()))
+    st.caption("ROE稅後、EPS、營收、法人與融資融券等不是日K可推導欄位；需要新增基本面或籌碼資料表後才能加入這裡。")
+
+    render_strategy_examples(query_df)
+    save_message = st.session_state.pop("query_strategy_save_message", None)
+    if save_message:
+        st.success(save_message)
+
+    market_options = sorted(value for value in query_df.get("market", pd.Series(dtype=str)).dropna().astype(str).unique() if value)
+    industry_options = sorted(
+        value for value in query_df.get("industry_category", pd.Series(dtype=str)).dropna().astype(str).unique() if value
+    )
+    if "filter_market" in st.session_state:
+        st.session_state["filter_market"] = [value for value in st.session_state["filter_market"] if value in market_options]
+    if "filter_industry" in st.session_state:
+        st.session_state["filter_industry"] = [value for value in st.session_state["filter_industry"] if value in industry_options]
+
+    clear_col1, clear_col2 = st.columns([1, 4])
+    if clear_col1.button("清空參數", type="secondary"):
+        set_query_controls_to_full_range(query_df)
+        st.session_state.pop("parameter_query_active_example", None)
+        st.session_state.pop("parameter_query_result", None)
+        st.session_state.pop("parameter_query_context", None)
+        st.rerun()
+    clear_col2.caption("清空會把關鍵字、市場、產業、布林條件與所有 range 都恢復成「全部」。")
+
+    query_context = json.dumps(
+        {
+            "strategy_name": strategy_name,
+            "params": params,
+            "holding_days": holding_days,
+            "start": selected_start_date.isoformat(),
+            "end": selected_end_date.isoformat(),
+            "rows": len(query_df),
+            "latest": str(query_df["latest_date"].max()) if "latest_date" in query_df.columns else "",
+        },
+        sort_keys=True,
+        default=str,
+    )
+
+    with st.form("parameter_query_form"):
+        mask = pd.Series(True, index=query_df.index)
+        action_col1, action_col2, action_col3 = st.columns([1, 2, 2])
+        submitted = action_col1.form_submit_button("查詢", type="primary")
+        save_submitted = action_col2.form_submit_button("儲存新策略")
+        action_col3.caption("上方按鈕固定在最前面；調整條件後，按查詢才更新結果。")
+
+        save_top_col1, save_top_col2 = st.columns([2, 3])
+        save_strategy_name_top = save_top_col1.text_input(
+            "策略名稱",
+            help="輸入名稱後，可把目前表單裡的條件儲存成自訂策略範例。",
+            key="save_strategy_name_top",
+        )
+        save_strategy_description_top = save_top_col2.text_input(
+            "策略說明",
+            help="簡短描述這組條件想找的股票型態。",
+            key="save_strategy_description_top",
+        )
+
+        top_col1, top_col2, top_col3 = st.columns([2, 1, 1])
+        keyword = top_col1.text_input(
+            "股票代號 / 名稱 / 主題關鍵字",
+            help="可輸入股票代號、股票名稱或主題標籤的一部分來篩選。",
+            key="filter_keyword",
+        ).strip()
+        if keyword:
+            keyword_mask = (
+                query_df["stock_id"].astype(str).str.contains(keyword, case=False, na=False)
+                | query_df["stock_name"].astype(str).str.contains(keyword, case=False, na=False)
+                | query_df.get("theme_tags", pd.Series("", index=query_df.index)).astype(str).str.contains(keyword, case=False, na=False)
+            )
+            mask &= keyword_mask
+
+        selected_markets = top_col2.multiselect("市場別", market_options, help="依上市、上櫃等市場分類篩選。", key="filter_market")
+        if selected_markets:
+            mask &= query_df["market"].astype(str).isin(selected_markets)
+
+        selected_industries = top_col3.multiselect(
+            "產業類別",
+            industry_options,
+            help="依股票池中的產業分類篩選。",
+            key="filter_industry",
+        )
+        if selected_industries:
+            mask &= query_df["industry_category"].astype(str).isin(selected_industries)
+
+        with st.expander("布林條件", expanded=False):
+            bool_cols = st.columns(4)
+            for index, definition in enumerate(BOOLEAN_FILTER_DEFINITIONS):
+                with bool_cols[index % len(bool_cols)]:
+                    mask = apply_boolean_filter(query_df, mask, definition)
+
+        definitions_by_category = {
+            category: [definition for definition in FILTER_DEFINITIONS if definition["category"] == category]
+            for category in FILTER_CATEGORY_ORDER
+        }
+        for category in FILTER_CATEGORY_ORDER:
+            definitions = definitions_by_category.get(category, [])
+            available_definitions = [definition for definition in definitions if definition["key"] in query_df.columns]
+            if not available_definitions:
+                continue
+            with st.expander(str(category), expanded=False):
+                columns = st.columns(3)
+                for index, definition in enumerate(available_definitions):
+                    with columns[index % len(columns)]:
+                        mask = apply_numeric_filter(query_df, mask, definition)
+
+    if save_submitted:
+        strategy_name_to_save = save_strategy_name_top.strip()
+        strategy_description_to_save = save_strategy_description_top.strip()
+        if not strategy_name_to_save:
+            st.warning("請先輸入策略名稱。")
+        else:
+            saved_strategy = collect_query_controls_as_strategy(
+                strategy_name_to_save,
+                strategy_description_to_save,
+                query_df,
+            )
+            save_path = save_query_strategy(saved_strategy)
+            st.session_state["query_strategy_save_message"] = f"已儲存策略：{strategy_name_to_save}（{save_path}）"
+            st.session_state["parameter_query_active_example"] = strategy_name_to_save
+            st.rerun()
+
+    if submitted:
+        filtered = query_df.loc[mask].sort_values(["current_strategy_signal", "volume_ratio_20"], ascending=[False, False])
+        st.session_state["parameter_query_result"] = filtered
+        st.session_state["parameter_query_context"] = query_context
+    elif st.session_state.get("parameter_query_context") == query_context and "parameter_query_result" in st.session_state:
+        filtered = st.session_state["parameter_query_result"]
+    else:
+        st.info("設定查詢條件後，請按「查詢」產生結果。")
+        return
+
+    st.caption(f"符合條件：{len(filtered)} / {len(query_df)} 檔")
+    result_columns = [column for column in FILTER_RESULT_LABELS if column in filtered.columns]
+    display_df = filtered[result_columns].copy()
+    percent_columns = ["day_return", "bias20", "atr_pct", "volatility_20", "return_20d"]
+    for column in percent_columns:
+        if column in display_df.columns:
+            display_df[column] = display_df[column] * 100
+    st.dataframe(localize_columns(display_df, FILTER_RESULT_LABELS), width="stretch", height=420)
+
+    with st.expander("全部欄位資料", expanded=False):
+        full_display = filtered.copy()
+        pct_columns = [definition["key"] for definition in FILTER_DEFINITIONS if definition.get("unit") == "pct"]
+        for column in pct_columns:
+            if column in full_display.columns:
+                full_display[column] = full_display[column] * 100
+        st.dataframe(full_display, width="stretch", height=520)
+
+    csv_data = filtered.to_csv(index=False, encoding="utf-8-sig")
+    st.download_button(
+        "下載目前查詢結果 CSV",
+        csv_data,
+        file_name="parameter_query_result.csv",
+        mime="text/csv",
+    )
+
+
+def render_parameter_query_tab(
+    price_data: dict[str, pd.DataFrame],
+    stock_pool: list[dict],
+    strategy_name: str,
+    params: dict,
+    holding_days: int,
+    selected_start_date: date,
+    selected_end_date: date,
+) -> None:
+    render_parameter_query_tab_v4(
+        price_data,
+        stock_pool,
+        strategy_name,
+        params,
+        holding_days,
+        selected_start_date,
+        selected_end_date,
+    )
+    return
+
+    st.subheader("全部參數查詢")
+    query_df = build_query_universe(price_data, stock_pool, strategy_name, params)
+    if query_df.empty:
+        st.info("目前分析區間內沒有可查詢的日K資料。")
+        return
+
+    strategy_display = get_strategy_display_name(strategy_name)
+    summary_col1, summary_col2, summary_col3, summary_col4 = st.columns(4)
+    summary_col1.metric("目前策略", strategy_display)
+    summary_col2.metric("回測天數", holding_days)
+    summary_col3.metric("分析區間", f"{selected_start_date.isoformat()} ~ {selected_end_date.isoformat()}")
+    summary_col4.metric("可查詢股票", len(query_df))
+    if params:
+        st.caption("目前策略參數：" + " / ".join(f"{key}={value}" for key, value in params.items()))
+    st.caption("ROE稅後、EPS、營收、法人與融資融券等不是日K可推導欄位；需要新增基本面或籌碼資料表後才能加入這裡。")
+
+    mask = pd.Series(True, index=query_df.index)
+    top_col1, top_col2, top_col3 = st.columns([2, 1, 1])
+    keyword = top_col1.text_input(
+        "股票代號 / 名稱 / 主題關鍵字",
+        help="可輸入股票代號、股票名稱或主題標籤的一部分來篩選。",
+    ).strip()
+    if keyword:
+        keyword_mask = (
+            query_df["stock_id"].astype(str).str.contains(keyword, case=False, na=False)
+            | query_df["stock_name"].astype(str).str.contains(keyword, case=False, na=False)
+            | query_df.get("theme_tags", pd.Series("", index=query_df.index)).astype(str).str.contains(keyword, case=False, na=False)
+        )
+        mask &= keyword_mask
+
+    market_options = sorted(value for value in query_df.get("market", pd.Series(dtype=str)).dropna().astype(str).unique() if value)
+    selected_markets = top_col2.multiselect("市場別", market_options, help="依上市、上櫃等市場分類篩選。")
+    if selected_markets:
+        mask &= query_df["market"].astype(str).isin(selected_markets)
+
+    industry_options = sorted(
+        value for value in query_df.get("industry_category", pd.Series(dtype=str)).dropna().astype(str).unique() if value
+    )
+    selected_industries = top_col3.multiselect("產業類別", industry_options, help="依股票池中的產業分類篩選。")
+    if selected_industries:
+        mask &= query_df["industry_category"].astype(str).isin(selected_industries)
+
+    st.markdown("**布林條件**")
+    bool_cols = st.columns(4)
+    for index, definition in enumerate(BOOLEAN_FILTER_DEFINITIONS):
+        with bool_cols[index % len(bool_cols)]:
+            mask = apply_boolean_filter(query_df, mask, definition)
+
+    definitions_by_category = {
+        category: [definition for definition in FILTER_DEFINITIONS if definition["category"] == category]
+        for category in FILTER_CATEGORY_ORDER
+    }
+    for category in FILTER_CATEGORY_ORDER:
+        definitions = definitions_by_category.get(category, [])
+        available_definitions = [definition for definition in definitions if definition["key"] in query_df.columns]
+        if not available_definitions:
+            continue
+        st.markdown(f"**{category}**")
+        columns = st.columns(3)
+        for index, definition in enumerate(available_definitions):
+            with columns[index % len(columns)]:
+                mask = apply_numeric_filter(query_df, mask, definition)
+
+    filtered = query_df.loc[mask].sort_values(["current_strategy_signal", "volume_ratio_20"], ascending=[False, False])
+    st.caption(f"符合條件：{len(filtered)} / {len(query_df)} 檔")
+    result_columns = [column for column in FILTER_RESULT_LABELS if column in filtered.columns]
+    display_df = filtered[result_columns].copy()
+    percent_columns = ["day_return", "bias20", "atr_pct", "volatility_20", "return_20d"]
+    for column in percent_columns:
+        if column in display_df.columns:
+            display_df[column] = display_df[column] * 100
+    st.dataframe(localize_columns(display_df, FILTER_RESULT_LABELS), width="stretch", height=420)
+
+    with st.expander("全部欄位資料", expanded=False):
+        full_display = filtered.copy()
+        pct_columns = [definition["key"] for definition in FILTER_DEFINITIONS if definition.get("unit") == "pct"]
+        for column in pct_columns:
+            if column in full_display.columns:
+                full_display[column] = full_display[column] * 100
+        st.dataframe(full_display, width="stretch", height=520)
+
+    csv_data = filtered.to_csv(index=False, encoding="utf-8-sig")
+    st.download_button(
+        "下載目前查詢結果 CSV",
+        csv_data,
+        file_name="parameter_query_result.csv",
+        mime="text/csv",
+    )
+
+
 def run_candidate_backtests(
     ranked: pd.DataFrame,
     price_data: dict[str, pd.DataFrame],
@@ -778,7 +2061,20 @@ def main() -> None:
     backtest_path = output_dir / "backtest_result.csv"
     trades.to_csv(backtest_path, index=False, encoding="utf-8-sig")
 
-    tab_screen, tab_chart, tab_backtest, tab_report, tab_limits = st.tabs(["候選股", "圖表", "回測", "報告", "限制"])
+    tab_query, tab_screen, tab_chart, tab_backtest, tab_report, tab_limits = st.tabs(
+        ["參數查詢", "候選股", "圖表", "回測", "報告", "限制"]
+    )
+
+    with tab_query:
+        render_parameter_query_tab(
+            price_data,
+            stock_pool,
+            strategy_name,
+            params,
+            holding_days,
+            selected_start_date,
+            selected_end_date,
+        )
 
     with tab_screen:
         st.subheader("Top N 候選股")
