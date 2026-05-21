@@ -107,9 +107,10 @@ def _supabase_write_headers(config: dict, extra_headers: dict | None = None) -> 
     key = get_supabase_write_key(config)
     headers = {
         "apikey": key,
-        "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
     }
+    if not key.startswith("sb_secret_"):
+        headers["Authorization"] = f"Bearer {key}"
     if extra_headers:
         headers.update(extra_headers)
     return headers
