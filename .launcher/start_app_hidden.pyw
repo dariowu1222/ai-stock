@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import json
 import subprocess
+import sys
 import time
 import urllib.request
 import webbrowser
@@ -26,10 +27,15 @@ def log(message: str) -> None:
 
 
 def python_exe() -> Path:
+    current = Path(sys.executable)
+    if current.exists():
+        return current
+
     local_app_data = os.environ.get("LOCALAPPDATA", "")
-    candidate = Path(local_app_data) / "Programs" / "Python" / "Python311" / "python.exe"
-    if candidate.exists():
-        return candidate
+    for version in ("Python312", "Python311", "Python310"):
+        candidate = Path(local_app_data) / "Programs" / "Python" / version / "python.exe"
+        if candidate.exists():
+            return candidate
     return Path("python.exe")
 
 
@@ -51,7 +57,7 @@ def is_app_running() -> bool:
 
 def ensure_packages(python: Path) -> bool:
     check = subprocess.run(
-        [str(python), "-c", "import streamlit, pandas, numpy, requests"],
+        [str(python), "-c", "import streamlit, pandas, numpy, requests, plotly, openpyxl"],
         cwd=PROJECT_DIR,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,

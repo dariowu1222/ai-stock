@@ -40,7 +40,7 @@ echo Starting AI Taiwan Stock Strategy Advisor...
 echo Project path: %CD%
 echo.
 
-call :run_python -c "import streamlit, pandas, numpy, requests" >nul 2>nul
+call :run_python -c "import streamlit, pandas, numpy, requests, plotly, openpyxl" >nul 2>nul
 if errorlevel 1 (
     echo Required packages are missing. Installing from requirements.txt...
     call :run_python -m pip install -r requirements.txt
